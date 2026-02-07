@@ -1,14 +1,114 @@
 {
   "name": "mct-data-management",
   "version": "1.0.0",
-  "description": "MCT module for DATA-MANAGEMENT",
-  "main": "dist/index.js",
+  "description": "MCT Data Management Service for project data handling",
+  "main": "src/index.ts",
   "scripts": {
+    "start": "ts-node src/index.ts",
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "test": "jest",
-    "setup": "npm install && npx drizzle-kit push:pg"
+    "test": "jest"
   },
-  "keywords": ["mct", "api", "microservice"],
-  "license": "MIT"
+  "dependencies": {
+    "express": "^4.17.1",
+    "typeorm": "^0.2.34",
+    "reflect-metadata": "^0.1.13",
+    "sqlite3": "^5.0.2",
+    "ts-node": "^10.0.0",
+    "typescript": "^4.1.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.11",
+    "@types/node": "^14.14.31",
+    "@types/sqlite3": "^3.1.6",
+    "jest": "^26.6.3",
+    "ts-jest": "^26.5.2"
+  }
 }
+### 2. **src/index.ts**
+import express from 'express';
+import { createConnection } from 'typeorm';
+import { routes } from './api/routes';
+const app = express();
+const PORT = 3000;
+app.use(express.json());
+createConnection().then(connection => {
+    console.log('Database connected!');
+    routes(app);
+    app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}).catch(error => console.log('Database connection failed:', error));
+### 3. **src/api/routes.ts**
+import { Express } from 'express';
+import { getProjects, createProject, updateProject, deleteProject } from '../services/projectService';
+export const routes = (app: Express) => {
+    app.get('/projects', getProjects);
+    app.post('/projects', createProject);
+    app.put('/projects/:id', updateProject);
+    app.delete('/projects/:id', deleteProject);
+};
+### 4. **src/db/schema.ts**
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+@Entity()
+export class Project {
+    @PrimaryGeneratedColumn()
+    id: number;
+    @Column()
+    name: string;
+    @Column()
+    description: string;
+}
+### 5. **src/mct/server.ts**
+import { tools } from './tools';
+import { Application } from 'express';
+export const registerMctTools = (app: Application) => {
+    tools.forEach(tool => {
+        app.use(tool.route, tool.handler);
+    });
+};
+### 6. **src/mct/tools.ts**
+import { Request, Response } from 'express';
+export const tools = [
+    {
+        route: '/api/projects',
+        handler: async (req: Request, res: Response) => {
+            // Implement tool logic
+            res.status(200).send('Tool response');
+        }
+    }
+];
+### 7. **src/services/projectService.ts**
+import { Request, Response } from 'express';
+import { getRepository } from 'typeorm';
+import { Project } from '../db/schema';
+export const getProjects = async (req: Request, res: Response) => {
+    const projectRepository = getRepository(Project);
+    const projects = await projectRepository.find();
+    res.json(projects);
+};
+export const createProject = async (req: Request, res: Response) => {
+    const projectRepository = getRepository(Project);
+    const project = projectRepository.create(req.body);
+    await projectRepository.save(project);
+    res.status(201).send(project);
+};
+export const updateProject = async (req: Request, res: Response) => {
+    const projectRepository = getRepository(Project);
+    const project = await projectRepository.findOne(req.params.id);
+    if (project) {
+        projectRepository.merge(project, req.body);
+        await projectRepository.save(project);
+        res.send(project);
+    } else {
+        res.status(404).send('Project not found');
+    }
+};
+export const deleteProject = async (req: Request, res: Response) => {
+    const projectRepository = getRepository(Project);
+    const result = await projectRepository.delete(req.params.id);
+    if (result.affected === 1) {
+        res.status(200).send('Project deleted');
+    } else {
+        res.status(404).send('Project not found');
+    }
+};
